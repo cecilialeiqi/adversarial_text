@@ -1,9 +1,10 @@
 # adversarial_text
 
 ## train the original model
- - download training dataset and put it in ./data/train.tsv, each line should consist of the text and the label, seprated by \t
- - sh run_LSTM.sh to train LSTM classifier
- - sh run_CNN.sh to train the word-level CNN classifier
+ - download training/testing dataset and put it in ./data/train.tsv and ./data/test.tsv, each line should consist of the text and the label, seprated by \t
+ - cd src/
+ - sh run_LSTM.sh (to train LSTM classifier)
+ - sh run_CNN.sh (to train the word-level CNN classifier)
 
 ## set up word embeddings model
  - Download paragram_300_sl999 file from https://github.com/recski/wordsim

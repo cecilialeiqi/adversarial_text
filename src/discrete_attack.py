@@ -29,9 +29,8 @@ paraphraser = Paraphraser('../../paraphraser/train-20180325-001253/model-171856'
 tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 nlp = spacy.load('en', create_pipeline=wmd.WMD.create_spacy_pipeline)
 NGRAM = 3
-N_NEIGHBOR = 15
 TAU = 0.7
-TAU_sim=0.6
+N_NEIGHBOR = 15
 N_REPLACE = 5
 
 def parse_args():
@@ -47,6 +46,9 @@ def parse_args():
     parser.add_argument('--model_path', action='store', dest='model_path',
         help='Path to pre-trained classifier model')
     parser.add_argument('max_size', help='max amount of data to be processed by the model')
+    parser.add_argument('first_label', help='The name of the first label that the model sees in the \
+                         training data. The model will automatically set it to be the positive label. \
+                         For instance, in the fake news dataset, the first label is FAKE.')
     return parser.parse_args()
 
 
@@ -90,11 +92,8 @@ class CNN(nn.Module):
         out = torch.cat(x_list, 2)
         out = out.view(out.size(0), -1)
         feature_extracted = out
-        # dropout is used in training but not in inference
-        # out = F.dropout(out, p=0.3, training=self.training)
+        out = F.dropout(out, p=0.1, training=self.training)
         return F.softmax(self.fc(out), dim=1), feature_extracted
-
-
 
 
 class Attacker(object):
@@ -105,7 +104,7 @@ class Attacker(object):
         self.DELTA_W=int(opt.word_delta)*0.1
         self.DELTA_S=int(opt.sentence_delta)*0.1
         self.TAU_2=2
-        self.TAU_wmd_s = 0.8
+        self.TAU_wmd_s = 0.75
         self.TAU_wmd_w=0.75
         # want do sentence level paraphrase first
         X=[doc.split() for doc in X]
@@ -288,7 +287,7 @@ class Attacker(object):
             sentence=re.sub("[^a-zA-Z0-9@()*.,-:\?!/ ]","",sentence)
             valid_words=[self.src_vocab.stoi[w] for w in word_tokenize(sentence)]
             bad_words=  sum([i==0 for i in valid_words]) 
-            if (count,i) in set(pairs) or len(word_tokenize(sentence))>60 or bad_words>=0.2*len(valid_words) or bad_words>=3 or len(sentence)>500:
+            if len(word_tokenize(sentence))>60 or bad_words>=0.2*len(valid_words) or bad_words>=3 or len(sentence)>500:
                  paraphrases=[]
             else:
                 print(count,i,sentence)
@@ -430,14 +429,8 @@ class Attacker(object):
 
 def main():
     opt = parse_args()
-    if 'yelp' in opt.train_path: 
-        opt.data='yelp'
-    elif 'trec07p' in opt.train_path: 
-        opt.data='email'
-    else:
-        opt.data='news'
-    X_train, y_train =read_data(opt.train_path)
-    X, y = read_data(opt.test_path)
+    X_train, y_train =read_data(opt.train_path, opt.first_label)
+    X, y = read_data(opt.test_path, opt.first_label)
     attacker=Attacker(X_train,opt)
     del X_train 
     del y_train
@@ -446,19 +439,16 @@ def main():
     for count, doc in enumerate(X):
         logging.info("Processing %d/%d documents", count + 1, len(X))
         print("Processing %d/%d documents, success %d/%d", count+1, len(X), suc, count)
-        if opt.data=='email':
-            changed_doc, flag, num_changed = attacker.attack(count, doc,1 if y[count]=='REAL' else 0)
-        else:
-            changed_doc, flag, num_changed = attacker.attack(count, doc,0 if y[count]=='REAL' else 1)
+        changed_doc, flag, num_changed = attacker.attack(count, doc, y[count])
         try:
             v=float(flag)
             if v>0.7:
                 suc+=1
-                changed_y='REAL' if y[count]=='FAKE' else 'FAKE'
+                changed_y=y[count]
             else:
-                changed_y='REAL' if y[count]=='REAL' else 'FAKE'
+                changed_y=1-y[count]
         except:
-            changed_y='REAL' if y[count]=='FAKE' else 'FAKE'
+            changed_y=1-y[count]
         dump_row(opt.output_path+suffix+'.tsv', changed_doc, changed_y)
         fout = open(opt.output_path+'_count'+suffix+'.csv','a')
         fout.write(str(count)+','+str(flag)+','+str(num_changed)+'\n')
