@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 from math import exp
 
-def read_data(path):
+def read_data(path, pos):
     x, y = [], []
     count=0
     with open(path) as fin:
@@ -13,7 +13,7 @@ def read_data(path):
             count+=1
             if count>20000: break
             x.append(row[0][:])#.decode('utf-8'))
-            y.append(int(row[1]))
+            y.append(1 if row[1]==pos else 0)
     return x, y
 
 def dump_data(path, x, y):
