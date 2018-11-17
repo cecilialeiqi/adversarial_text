@@ -5,7 +5,7 @@
  - cd src/
  - make train_LSTM (to train LSTM classifier)
  - make train_CNN (to train the word-level CNN classifier)
-
+ - Move the models to targeted directory, e.g. ../model/model_lstm.pt and ../model/model_cnn.pt
 ## step 2: set up word embeddings model
  - Download paragram_300_sl999 file from https://github.com/recski/wordsim
  - change in the Makefile the embedding_path to be the directory of the above file
@@ -15,7 +15,7 @@
  - put it the the same parent path as the text_adversarial repository
 
 ## step 4: generate adversarial examples
- - In the Makefile, change the model_path to the above generated models
+ - In the Makefile, change the input parameter model_path to the above generated models; also, change the input parameter first_label to the first label name (e.g. FAKE for the news data) appeared in the training file. (Otherwise the model doesn't distinguish positive and negative labels)
  - "make attack_cnn" to generate adversarial examples of the wcnn model
  - "make attack_lstm" to generate adversarial examples of the lstm classifier
 

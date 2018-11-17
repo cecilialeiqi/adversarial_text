@@ -37,8 +37,8 @@ def parse_args():
         help='Path to pre-trained embedding data')
     parser.add_argument('--model_path', action='store', dest='model_path',
         help='Path to pre-trained classifier model')
-    parser.add_argument('max_size', help='max amount of data to be processed by the model')
-    parser.add_argument('first_label', help='The name of the first label that the model sees in the \
+    parser.add_argument('max_size', help='max amount of transformations to be processed by each iteration')
+    parser.add_argument('--first_label', help='The name of the first label that the model sees in the \
                          training data. The model will automatically set it to be the positive label. \
                          For instance, in the fake news dataset, the first label is FAKE.')
     return parser.parse_args()
