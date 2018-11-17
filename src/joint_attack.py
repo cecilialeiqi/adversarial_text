@@ -12,14 +12,21 @@ import torch
 from torch.autograd import Variable
 from torchtext import data
 import nltk
+from nltk import word_tokenize
 from gensim.models.keyedvectors import KeyedVectors
 import time
 from lm import NGramLangModel
+import sys
+sys.path.append('../../paraphraser/paraphraser')
 from util import *
 import spacy
+from inference import *
 import wmd
 import re
 import torch.nn.functional as F
+# load the paraphraser
+paraphraser = Paraphraser('../../paraphraser/train-20180325-001253/model-171856')
+tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 nlp = spacy.load('en', create_pipeline=wmd.WMD.create_spacy_pipeline)
 NGRAM = 3
 TAU = 0.7
@@ -28,6 +35,7 @@ N_REPLACE = 5
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('sentence_delta', help= 'percentage of allowed sentence paraphasing')
     parser.add_argument('word_delta', help= 'percentage of allowed word paraphasing')
     parser.add_argument('model', help='model: either CNN or LSTM')
     parser.add_argument('train_path', help='Path to training data')
@@ -91,8 +99,9 @@ class Attacker(object):
     ''' main part of the attack model '''
     def __init__(self, X, opt):
         self.opt=opt
-        self.suffix='wordonly-'+str(opt.word_delta)
+        self.suffix=str(opt.sentence_delta)+'-'+str(opt.word_delta)
         self.DELTA_W=int(opt.word_delta)*0.1
+        self.DELTA_S=int(opt.sentence_delta)*0.1
         self.TAU_2=2
         self.TAU_wmd_s = 0.75
         self.TAU_wmd_w=0.75
@@ -246,8 +255,63 @@ class Attacker(object):
         return src_field.vocab, label_field.vocab
 
     def attack(self, count, doc, y):
+        best_score=0.0
         st=time.time()
+        #--------------------------------------------sentence paraphrasing--------------------------------------------#
+        sentences=tokenizer.tokenize(doc)
+        print('before classification')
+        if not(doc.split()): return doc, 0, -1
+        if self.opt.model=='CNN':    
+            doc_var = self.text_to_var_CNN([doc.split()], self.src_vocab)
+        else:
+            doc_var = text_to_var([doc.split()],self.src_vocab)
+        orig_prob, orig_pred = classify(doc_var, self.model)
+        pred, pred_prob = orig_pred, orig_prob
+        if not (pred == y or pred_prob < TAU):
+            return doc.split(), pred_prob, -1
+        num_replaced=0
+        changed_pos=set()
+        # first get all the paraphrases for each sentence
+        list_closest_neighbors=[]
+        for i, sentence in enumerate(sentences):
+            doc1=nlp(sentence)
+            closest_neighbors=[]
+            sentence=re.sub("[^a-zA-Z0-9@()*.,-:\?!/ ]","",sentence)
+            valid_words=[self.src_vocab.stoi[w] for w in word_tokenize(sentence)]
+            bad_words=  sum([i==0 for i in valid_words]) 
+            if len(word_tokenize(sentence))>60 or bad_words>=0.2*len(valid_words) or bad_words>=3 or len(sentence)>500:
+                 paraphrases=[]
+            else:
+                print(count,i,sentence)
+                paraphrases = paraphraser.sample_paraphrase(sentence, sampling_temp=0.75, how_many=N_NEIGHBOR)
+            for p in paraphrases:
+                doc2=nlp(p)
+                score=doc1.similarity(doc2)
+                if score>=self.TAU_wmd_s: 
+                    closest_neighbors.append(p)
+            list_closest_neighbors.append(closest_neighbors)
+        while (pred == y or pred_prob < TAU) and time.time()-st<3600 \
+                and num_replaced < self.DELTA_S * len(sentences): 
+            new_sentences, pos, pred_prob = self.sentence_paraphrase(y, sentences, changed_pos, list_closest_neighbors)
+            if pos==-1 or pred_prob<best_score:
+                print('sentence paraphraser over')
+                break
+            changed_pos.add(pos)
+            if pred_prob>=best_score: sentences=copy(new_sentences)
+            best_score=max(best_score,pred_prob)
+            s=(" ".join(new_sentences)).split()
+            if self.opt.model=='LSTM':
+                var=text_to_var([s], self.src_vocab)
+            else:
+                var=self.text_to_var_CNN([s], self.src_vocab)
+            ns=negative_score(var, self.model, y)
+            best_score = min(ns,best_score)
+            pred_prob=best_score
+            num_replaced += 1
+            if pred_prob>0.5:
+                pred=1-y
         #---------------------------------word paraphrasing----------------------------------------------#
+        doc=" ".join(sentences)
         words=doc.split()
         words_before=copy(words)
         best_words=copy(words)
@@ -256,11 +320,13 @@ class Attacker(object):
             doc_var = text_to_var([words], self.src_vocab)
         else:
             doc_var = self.text_to_var_CNN([words], self.src_vocab)
-        orig_prob, orig_pred = classify(doc_var, self.model)
-        pred, pred_prob = orig_pred, orig_prob
+        c_prob = negative_score(doc_var, self.model, y)
+        ### turns out they are different, weird, will fix that
+        best_score=c_prob
+        # wanna save the following things: [document, pred, changed_pos] after sentence paraphrasing, as well as after word paraphrasing
+        dump_p_row(self.opt.output_path+'_per_sentence'+self.suffix+'.csv',[count, doc, pred, pred_prob, list(changed_pos)])
         if not (pred == y or pred_prob < TAU):
-            return words, pred_prob, 0
-        best_score=1-pred_prob
+            return words, pred_prob, 0 
         # now word level paraphrasing
         list_closest_neighbors=[]
         for pos, w in enumerate(words):
@@ -361,7 +427,7 @@ def main():
     del X_train 
     del y_train
     suc=0
-    suffix='wordonly-'+str(opt.word_delta)
+    suffix=str(opt.sentence_delta)+'-'+str(opt.word_delta)
     for count, doc in enumerate(X):
         logging.info("Processing %d/%d documents", count + 1, len(X))
         print("Processing %d/%d documents, success %d/%d", count+1, len(X), suc, count)

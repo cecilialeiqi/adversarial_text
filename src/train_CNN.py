@@ -16,8 +16,6 @@ if torch.cuda.is_available():
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--method', action='store',dest='method',help='method: either LSTM or CNN')
-    parser.add_argument('--retrain', dest='retrain', help='True or False')
     parser.add_argument('--train_path', action='store', dest='train_path',
                         help='Path to train data')
     parser.add_argument('--test_path', action='store', dest='test_path',
@@ -39,7 +37,6 @@ class CNN(nn.Module):
         print(vocab_size)
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.embedding.weight.data.copy_(pretrained_embeddings)
-        #self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
         self.embedding.weight.requires_grad = False #mode=="nonstatic"
         if use_cuda:
             self.embedding = self.embedding.cuda()
@@ -99,8 +96,6 @@ def evaluate_lstm(model, batch):
 
 def main():
     opt = parse_args()
-    opt.retrain=opt.retrain=='True'
-    print(opt.retrain)
     src_field = data.Field()
     label_field = data.Field(pad_token=None, unk_token=None)
     train = data.TabularDataset(
@@ -112,30 +107,18 @@ def main():
         fields=[('text', src_field), ('label', label_field)]
     )
     print(type(train))
-    if opt.method=='CNN': max_s=10000 
-    else: max_s=100000
-    if opt.train_path=='../data/train.tsv':
-        src_field.build_vocab(train, max_size=max_s, min_freq=1, vectors="glove.6B.300d")
-    else:
-        src_field.build_vocab(train, max_size=max_s, min_freq=2, vectors="glove.6B.300d")
+    max_s=100000
+    src_field.build_vocab(train, max_size=max_s, min_freq=2, vectors="glove.6B.300d")
     label_field.build_vocab(train)
     sentence_len=max([len(v.text) for v in train])
     print('sentence_len', sentence_len)
     if sentence_len>5000: sentence_len=5000
     print("Training size: {0}, Testing size: {1}, sentence_len: {2}".format(len(train), len(test), sentence_len))
-    if opt.method=='LSTM':
-        classifier = LSTMClassifier(300, 512, len(label_field.vocab), src_field.vocab.vectors)
-    elif opt.method=='CNN':
-        embedding_dim = 300
-        num_filters = 100
-        kernel_sizes = [3]
-        print(src_field.vocab.vectors)
-        if opt.retrain:
-            print('loading model...')
-            classifier = torch.load('model0', map_location=lambda storage, loc: storage)
-            sentence_len=classifier.sentence_len
-        else:
-            classifier = CNN(sentence_len, kernel_sizes, num_filters, embedding_dim, src_field.vocab.vectors)    
+    embedding_dim = 300
+    num_filters = 100
+    kernel_sizes = [3]
+    print(src_field.vocab.vectors)
+    classifier = CNN(sentence_len, kernel_sizes, num_filters, embedding_dim, src_field.vocab.vectors)    
     if torch.cuda.is_available():
         classifier.cuda()
 
@@ -149,14 +132,10 @@ def main():
         dataset=test, batch_size=20, device=device, repeat=False)
     print("\n{}\n".format(str(classifier)))
     parameters = filter(lambda p: p.requires_grad, classifier.parameters())
-    if opt.method=='LSTM':
-        optimizer = optim.Adam(parameters)  #classifier.parameters())
-    elif opt.method=='CNN':
-        optimizer = optim.Adam(parameters, lr=0.0002)
+    optimizer = optim.Adam(parameters)  #classifier.parameters())
     print('set up optimizer over')
-    if not opt.retrain:
-        for param in parameters: #classifier.parameters():
-            param.data.uniform_(-0.08, 0.08)
+    for param in parameters: #classifier.parameters():
+        param.data.uniform_(-0.08, 0.08)
     criterion = nn.CrossEntropyLoss()
     print('started training')
     step = 0
@@ -166,10 +145,7 @@ def main():
         #test_accu = evaluate(classifier, test, opt.batch_size)
         test_acc=0
         for batch in test_iter:
-            if opt.method=='LSTM':
-                 test_acc+=evaluate_lstm(classifier, batch)
-            else:
-                 test_acc+=evaluate_cnn(classifier, batch, sentence_len)
+             test_acc+=evaluate_cnn(classifier, batch, sentence_len)
         print('Test accuracy: {0}'.format(test_acc/len(test)))
         #print('Train accuracy: {0}, Test accuracy: {1}'.format(train_accu, test_accu))
         running_loss = 0.0
@@ -178,16 +154,13 @@ def main():
         for batch in train_iter:
             #total_n+=16
             optimizer.zero_grad()
-            if opt.method=='LSTM': 
-                pred=classifier(batch.text)
+            if len(batch.text)>sentence_len:
+                inputs=batch.text[:sentence_len].transpose(0,1)
+            elif len(batch.text)<sentence_len:
+                inputs=F.pad(batch.text.transpose(0,1), (0,sentence_len-len(batch.text)))
             else:
-                if len(batch.text)>sentence_len:
-                    inputs=batch.text[:sentence_len].transpose(0,1)
-                elif len(batch.text)<sentence_len:
-                    inputs=F.pad(batch.text.transpose(0,1), (0,sentence_len-len(batch.text)))
-                else:
-                    inputs=batch.text.transpose(0,1)
-                pred,_ = classifier(inputs)
+                inputs=batch.text.transpose(0,1)
+            pred,_ = classifier(inputs)
             #acc=sum([1 if pred.data.cpu().numpy()[i,j]>-0.693147 else 0 for i,j in enumerate(batch.label.data.cpu().numpy()[0])])
             #total_acc+=acc
             loss = criterion(pred, batch.label.view(-1))
