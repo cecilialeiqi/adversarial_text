@@ -19,6 +19,6 @@
  - "make attack_cnn" to generate adversarial examples of the wcnn model
  - "make attack_lstm" to generate adversarial examples of the lstm classifier
 
- - To use joint sentence and word level attacks, run the following
+ - To use joint sentence and word level attacks, do step 3 and run the following
  - make attack_cnn_joint
  - make attack_lstm_joint
