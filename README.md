@@ -22,3 +22,8 @@
  - To use joint sentence and word level attacks, do step 3 and run the following
  - make attack_cnn_joint
  - make attack_lstm_joint
+
+
+## Datasets:
+ - Finally, the datasets we used could be obtained from https://www.dropbox.com/sh/jdkhvdgzmytu78i/AACo53pUyerYO6jwVds5SZyPa?dl=0
+ - The dataset in ./data folder is the fake news dataset  
