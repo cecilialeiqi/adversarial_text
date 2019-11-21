@@ -1,5 +1,9 @@
 # adversarial_text
 
+ - Qi Lei, Lingfei Wu, Pin-Yu Chen, Alexandros G. Dimakis, Inderjit S. Dhillon, Michael Witbrock. "Discrete Adversarial Attacks and Submodular Optimization with Applications to Text Classification” Systems and Machine Learning (sysML). 2019 ([arXiv](https://arxiv.org/abs/1812.00151),[slides](http://users.oden.utexas.edu/~leiqi/discrete_attack.pdf)) 
+
+ - Press coverage: <[Nature Story](https://www.nature.com/articles/d41586-019-01510-1?utm_source=twt_nnc&utm_medium=social&utm_campaign=naturenews&sf212595612=1)> <[Vecturebeat](https://venturebeat.com/2019/04/01/text-based-ai-models-are-vulnerable-to-paraphrasing-attacks-researchers-find/)> <[Tech Talks](https://bdtechtalks.com/2019/04/02/ai-nlp-paraphrasing-adversarial-attacks/)> <[机器之心](https://www.jiqizhixin.com/articles/2019-03-27-10?from=synced&keyword=SysML%202019)> 
+
 ## step 1: train the original model
  - download training/testing dataset and put it in ./data/train.tsv and ./data/test.tsv, each line should consist of the text and the label, seprated by \t
  - cd src/
